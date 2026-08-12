@@ -6,25 +6,11 @@ const DB_PATH = path.join(__dirname, '..', 'data', 'db.json');
 const TURSO_URL = process.env.TURSO_URL;
 const TURSO_TOKEN = process.env.TURSO_TOKEN;
 
-const MAX_CACHE_SIZE = 1000;
-const channelCache = new Map();
-
-function cacheChannelSetting(channelId, setting) {
-  if (channelCache.size >= MAX_CACHE_SIZE) {
-    channelCache.delete(channelCache.keys().next().value);
-  }
-  channelCache.set(channelId, setting);
-}
-
-function invalidateChannelSetting(channelId) {
-  channelCache.delete(channelId);
-}
-
 function load() {
   try {
     return JSON.parse(fs.readFileSync(DB_PATH, 'utf8'));
   } catch {
-    return { channels: {} };
+    return { guilds: {}, channels: {} };
   }
 }
 
@@ -35,102 +21,92 @@ function save(data) {
 }
 
 async function turso(sql, args = []) {
-  if (!TURSO_URL || !TURSO_TOKEN) {
-    throw new Error('Turso is not configured');
-  }
-  let res;
-  try {
-    res = await fetch(`${TURSO_URL}/v2/pipeline`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${TURSO_TOKEN}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        requests: [
-          { type: 'execute', stmt: { sql, args } },
-          { type: 'close' },
-        ],
-      }),
-    });
-  } catch (err) {
-    throw new Error(`Turso request failed: ${err.message}`);
-  }
-  if (!res.ok) {
-    throw new Error(`Turso HTTP ${res.status}: ${await res.text()}`);
-  }
+  const res = await fetch(`${TURSO_URL}/v2/pipeline`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${TURSO_TOKEN}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      requests: [
+        { type: 'execute', stmt: { sql, args } },
+        { type: 'close' },
+      ],
+    }),
+  });
   const json = await res.json();
-  const result = json.results?.[0];
-  if (json.error || result?.error) {
-    throw new Error(result?.error?.message || json.error?.message || 'Turso request error');
-  }
-  return result;
+  if (json.error) throw new Error(json.error.message);
+  return json.results?.[0];
 }
 
-let tablesReady = null;
-function ensureTables() {
-  if (!TURSO_URL) return Promise.resolve();
-  if (!tablesReady) {
-    tablesReady = (async () => {
-      await turso(
-        'CREATE TABLE IF NOT EXISTS channel_settings (channel_id TEXT PRIMARY KEY, guild_id TEXT NOT NULL, auto_translate_lang TEXT)'
-      );
-    })().catch(err => {
-      tablesReady = null;
-      throw err;
-    });
-  }
-  return tablesReady;
-}
-
-function parseRows(res) {
-  const rows = res?.response?.result?.rows;
-  if (!Array.isArray(rows)) return [];
-  return rows.map(row => Array.from(row));
-}
-
-function parseLangList(value) {
-  if (!value) return undefined;
-  if (Array.isArray(value)) return value;
-  const trimmed = String(value).trim();
-  if (trimmed.startsWith('[')) {
-    try {
-      const arr = JSON.parse(trimmed);
-      if (Array.isArray(arr)) return arr;
-      return [trimmed];
-    } catch {
-      return [trimmed];
-    }
-  }
-  return trimmed.includes(',') ? trimmed.split(',').map(s => s.trim()).filter(Boolean) : [trimmed];
+let tablesChecked = false;
+async function ensureTables() {
+  if (tablesChecked || !TURSO_URL) return;
+  tablesChecked = true;
+  await turso(
+    `CREATE TABLE IF NOT EXISTS guild_settings (guild_id TEXT PRIMARY KEY, default_lang TEXT NOT NULL DEFAULT 'en')`
+  );
+  await turso(
+    `CREATE TABLE IF NOT EXISTS channel_settings (channel_id TEXT PRIMARY KEY, guild_id TEXT NOT NULL, auto_translate_lang TEXT)`
+  );
 }
 
 module.exports = {
+  async getGuildSetting(guildId) {
+    if (TURSO_URL) {
+      await ensureTables();
+      const res = await turso('SELECT * FROM guild_settings WHERE guild_id = ?', [guildId]);
+      const row = res?.response?.result?.rows?.[0];
+      if (row) return { guild_id: row[0], default_lang: row[1] };
+      await turso('INSERT INTO guild_settings (guild_id) VALUES (?)', [guildId]);
+      return { guild_id: guildId, default_lang: 'en' };
+    }
+    const data = load();
+    if (!data.guilds[guildId]) {
+      data.guilds[guildId] = { default_lang: 'en' };
+      save(data);
+    }
+    return { guild_id: guildId, default_lang: data.guilds[guildId].default_lang };
+  },
+  async setGuildLang(guildId, lang) {
+    if (TURSO_URL) {
+      await ensureTables();
+      await turso('INSERT OR REPLACE INTO guild_settings (guild_id, default_lang) VALUES (?, ?)', [guildId, lang]);
+      return;
+    }
+    const data = load();
+    if (!data.guilds[guildId]) data.guilds[guildId] = {};
+    data.guilds[guildId].default_lang = lang;
+    save(data);
+  },
   async getChannelSetting(channelId) {
-    if (channelCache.has(channelId)) return channelCache.get(channelId);
-    let setting;
     if (TURSO_URL) {
       await ensureTables();
       const res = await turso('SELECT * FROM channel_settings WHERE channel_id = ?', [channelId]);
-      const rows = parseRows(res);
-      if (rows.length === 0) {
-        setting = null;
-      } else {
-        const [channel_id, guild_id, autoLang] = rows[0];
-        setting = { channel_id, guild_id, auto_translate_lang: parseLangList(autoLang) };
-      }
-    } else {
-      const data = load();
-      const ch = data.channels[channelId];
-      setting = ch
-        ? { channel_id: channelId, ...ch, auto_translate_lang: parseLangList(ch.auto_translate_lang) }
-        : null;
+      const row = res?.response?.result?.rows?.[0];
+      if (!row) return null;
+      return { channel_id: row[0], guild_id: row[1], auto_translate_lang: row[2] || undefined };
     }
-    cacheChannelSetting(channelId, setting);
-    return setting;
+    const data = load();
+    const ch = data.channels[channelId];
+    return ch ? { channel_id: channelId, ...ch } : null;
+  },
+  async setChannelAutoTranslate(channelId, guildId, lang) {
+    if (TURSO_URL) {
+      await ensureTables();
+      await turso(
+        'INSERT OR REPLACE INTO channel_settings (channel_id, guild_id, auto_translate_lang) VALUES (?, ?, ?)',
+        [channelId, guildId, lang]
+      );
+      return;
+    }
+    const data = load();
+    if (!data.channels[channelId]) data.channels[channelId] = {};
+    data.channels[channelId].guild_id = guildId;
+    data.channels[channelId].auto_translate_lang = lang;
+    save(data);
   },
   async disableChannelAutoTranslate(channelId) {
-    invalidateChannelSetting(channelId);
     if (TURSO_URL) {
       await ensureTables();
       await turso('DELETE FROM channel_settings WHERE channel_id = ?', [channelId]);
@@ -138,25 +114,24 @@ module.exports = {
     }
     const data = load();
     if (data.channels[channelId]) {
-      delete data.channels[channelId];
+      data.channels[channelId].auto_translate_lang = undefined;
       save(data);
     }
   },
   async setChannelTriad(channelId, guildId, langs) {
-    const storage = JSON.stringify(langs);
-    invalidateChannelSetting(channelId);
+    const str = langs.join(',');
     if (TURSO_URL) {
       await ensureTables();
       await turso(
         'INSERT OR REPLACE INTO channel_settings (channel_id, guild_id, auto_translate_lang) VALUES (?, ?, ?)',
-        [channelId, guildId, storage]
+        [channelId, guildId, str]
       );
       return;
     }
     const data = load();
     if (!data.channels[channelId]) data.channels[channelId] = {};
     data.channels[channelId].guild_id = guildId;
-    data.channels[channelId].auto_translate_lang = langs;
+    data.channels[channelId].auto_translate_lang = str;
     save(data);
   },
 

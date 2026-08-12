@@ -1,17 +1,12 @@
 {
-  "name": "translator-bot",
+  "name": "str-discord-bot",
   "version": "1.0.0",
   "private": true,
-  "description": "Multilingual Discord translation bot with auto-translate and slang normalization",
+  "description": "Multilingual Discord translation bot with auto-translate",
   "main": "src/index.js",
-  "engines": {
-    "node": ">=18"
-  },
   "scripts": {
     "start": "node src/index.js",
-    "dev": "node --watch src/index.js",
-    "deploy": "node scripts/deploy-commands.js",
-    "test": "node --test"
+    "dev": "node --watch src/index.js"
   },
   "dependencies": {
     "deepl-node": "^1.27.0",

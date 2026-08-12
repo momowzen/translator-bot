@@ -2,29 +2,6 @@ const deepl = require('deepl-node');
 
 const translator = new deepl.Translator(process.env.DEEPL_API_KEY);
 
-const RATE_WINDOW_MS = 10_000;
-const RATE_LIMIT_PER_CHANNEL = 15;
-const usage = new Map();
-
-function rateLimited(channelId) {
-  if (!channelId) return false;
-  const now = Date.now();
-  const slot = usage.get(channelId);
-  if (!slot || now - slot.windowStart >= RATE_WINDOW_MS) {
-    usage.set(channelId, { count: 1, warned: false, windowStart: now });
-    return false;
-  }
-  slot.count += 1;
-  if (slot.count > RATE_LIMIT_PER_CHANNEL) {
-    if (!slot.warned) {
-      slot.warned = true;
-      console.warn(`DeepL rate limit reached for channel ${channelId}, dropping translations until window resets`);
-    }
-    return true;
-  }
-  return false;
-}
-
 const CODE_MAP = {
   en: 'en-US',
   pt: 'pt-PT',
@@ -49,9 +26,8 @@ function toSource(code) {
   return (REV_MAP[lower] || lower).toUpperCase();
 }
 
-async function translateText(text, targetLang, sourceLang, channelId) {
+async function translateText(text, targetLang, sourceLang) {
   try {
-    if (rateLimited(channelId)) return { text: null, detectedLang: null };
     const src = sourceLang && sourceLang !== 'auto' ? toSource(sourceLang) : null;
     const result = await translator.translateText(text, src, toTarget(targetLang));
     const detected = sourceLang === 'auto' ? null : (sourceLang || null);
@@ -62,9 +38,8 @@ async function translateText(text, targetLang, sourceLang, channelId) {
   }
 }
 
-async function detectLanguage(text, channelId) {
+async function detectLanguage(text) {
   try {
-    if (rateLimited(channelId)) return null;
     const result = await translator.translateText(text, null, 'EN-US');
     const raw = result.detectedSourceLang?.toLowerCase() || null;
     return REV_MAP[raw] || raw;

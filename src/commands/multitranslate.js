@@ -3,7 +3,7 @@ const { languages, getLanguageName } = require('../utils/languages');
 
 module.exports = {
   data: new SlashCommandBuilder()
-    .setName('translator')
+    .setName('multitranslate')
     .setDescription('Auto-translate between one or more languages bidirectionally')
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
     .addSubcommand(sub => sub
@@ -16,7 +16,8 @@ module.exports = {
         .setAutocomplete(true))
       .addStringOption(opt => opt
         .setName('lang2')
-        .setDescription('Second language code (optional)')
+        .setDescription('Second language code')
+        .setRequired(true)
         .setAutocomplete(true))
       .addStringOption(opt => opt
         .setName('lang3')
@@ -32,7 +33,7 @@ module.exports = {
         .setAutocomplete(true)))
     .addSubcommand(sub => sub
       .setName('off')
-      .setDescription('Disable auto-translate in this channel')),
+      .setDescription('Disable multi-translate in this channel')),
   async autocomplete(interaction) {
     const focused = interaction.options.getFocused().toLowerCase();
     const matches = Object.entries(languages)
@@ -46,7 +47,7 @@ module.exports = {
 
     if (sub === 'off') {
       await interaction.client.db.disableChannelAutoTranslate(interaction.channelId);
-      return interaction.reply({ content: 'Auto-translate disabled for this channel.', flags: MessageFlags.Ephemeral });
+      return interaction.reply({ content: 'Multi-translate disabled for this channel.', flags: MessageFlags.Ephemeral });
     }
 
     const langs = [];
@@ -68,7 +69,7 @@ module.exports = {
     const names = langs.map(l => `**${getLanguageName(l)}** (${l})`).join(', ');
     const msg = langs.length === 1
       ? `Auto-translate enabled! All messages will be translated to ${names}.`
-      : `Auto-translate enabled! Messages will auto-translate between: ${names}`;
+      : `Multi-translate enabled! Messages will auto-translate between: ${names}`;
     await interaction.reply({ content: msg, flags: MessageFlags.Ephemeral });
   },
 };
