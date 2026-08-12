@@ -11,11 +11,11 @@ module.exports = {
       .setDescription('Multilingual translation bot for Discord')
       .addFields(
         {
-          name: '`/multitranslate set <lang1> <lang2> [lang3…5]`',
+          name: '`/translator set <lang1> [lang2…5]`',
           value: 'Enable auto-translate in this channel for up to 5 languages. Requires **Manage Channels** permission.',
         },
         {
-          name: '`/multitranslate off`',
+          name: '`/translator off`',
           value: 'Disable auto-translate for this channel.',
         },
         {
