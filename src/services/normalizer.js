@@ -1,4 +1,4 @@
-const DICT = require('../data/slang.json');
+const DICT = require('./slang.json');
 
 const KEYS = Object.keys(DICT).sort((a, b) => b.length - a.length);
 const TOKEN_RE = new RegExp(`\\b(?:${KEYS.map(escapeRegex).join('|')})\\b`, 'gi');
