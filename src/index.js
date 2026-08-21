@@ -1,21 +1,25 @@
 require('dotenv').config();
-const { Client, GatewayIntentBits, Collection } = require('discord.js');
+const { Client, GatewayIntentBits, Collection, Partials } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
 const config = require('./config');
 const database = require('./database');
+const VoiceManager = require('./services/VoiceManager');
 
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.GuildVoiceStates,
     GatewayIntentBits.MessageContent,
   ],
+  partials: [Partials.Channel],
 });
 
 client.commands = new Collection();
 client.config = config;
 client.db = database;
+client.voiceManager = new VoiceManager(client);
 
 // Load commands
 const commandsPath = path.join(__dirname, 'commands');
