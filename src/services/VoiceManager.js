@@ -7,6 +7,7 @@ const {
   entersState,
 } = require('@discordjs/voice');
 const { Readable } = require('stream');
+const opus = require('@discordjs/opus');
 const { transcribe } = require('./stt');
 const { speak: ttsSpeak } = require('./tts');
 const { translateText } = require('./translator');
@@ -120,11 +121,13 @@ class VoiceManager {
     state.userStreams.delete(userId);
     if (!entry.stream.destroyed) entry.stream.destroy();
 
-    const opusData = Buffer.concat(entry.chunks);
-    if (opusData.length < 1000) return;
+    const opusFrames = entry.chunks;
+    if (opusFrames.length < 2) return;
 
     try {
-      const wavBuffer = this._opusToWav(opusData);
+      const pcmBuffer = this._decodeOpus(opusFrames);
+      if (pcmBuffer.length < 4800) return;
+      const wavBuffer = this._pcmToWav(pcmBuffer);
       const sttResult = await transcribe(wavBuffer);
       if (!sttResult.text || sttResult.text.trim().length < 2) return;
 
@@ -165,13 +168,25 @@ class VoiceManager {
     state.audioPlayer.play(createAudioResource(Readable.from(next)));
   }
 
-  _opusToWav(opusPcm) {
+  _decodeOpus(opusFrames) {
+    const decoder = new opus.Decoder({ rate: 48000, channels: 2, frameSize: 960 });
+    const pcmParts = [];
+    for (const frame of opusFrames) {
+      try {
+        pcmParts.push(decoder.decode(frame));
+      } catch {}
+    }
+    decoder.destroy();
+    return Buffer.concat(pcmParts);
+  }
+
+  _pcmToWav(pcm) {
     const channels = 2;
     const sampleRate = 48000;
     const bitsPerSample = 16;
     const byteRate = sampleRate * channels * (bitsPerSample / 8);
     const blockAlign = channels * (bitsPerSample / 8);
-    const dataSize = opusPcm.length;
+    const dataSize = pcm.length;
     const headerSize = 44;
     const buffer = Buffer.alloc(headerSize + dataSize);
     buffer.write('RIFF', 0);
@@ -187,7 +202,7 @@ class VoiceManager {
     buffer.writeUInt16LE(bitsPerSample, 34);
     buffer.write('data', 36);
     buffer.writeUInt32LE(dataSize, 40);
-    opusPcm.copy(buffer, 44);
+    pcm.copy(buffer, 44);
     return buffer;
   }
 }
