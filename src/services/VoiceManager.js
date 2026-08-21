@@ -7,7 +7,7 @@ const {
   entersState,
 } = require('@discordjs/voice');
 const { Readable } = require('stream');
-const opus = require('@discordjs/opus');
+const OpusScript = require('opusscript');
 const { transcribe } = require('./stt');
 const { speak: ttsSpeak } = require('./tts');
 const { translateText } = require('./translator');
@@ -169,14 +169,14 @@ class VoiceManager {
   }
 
   _decodeOpus(opusFrames) {
-    const decoder = new opus.Decoder({ rate: 48000, channels: 2, frameSize: 960 });
+    const decoder = new OpusScript(48000, 2, OpusScript.Application.AUDIO);
     const pcmParts = [];
     for (const frame of opusFrames) {
       try {
         pcmParts.push(decoder.decode(frame));
       } catch {}
     }
-    decoder.destroy();
+    decoder.delete();
     return Buffer.concat(pcmParts);
   }
 
