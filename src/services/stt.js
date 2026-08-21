@@ -21,7 +21,7 @@ async function transcribe(wavBuffer) {
     const parts = [];
     parts.push(Buffer.from(
       `--${boundary}\r\n` +
-      `Content-Disposition: form-data; name="file"\r\n` +
+      `Content-Disposition: form-data; name="file"; filename="audio.wav"\r\n` +
       `Content-Type: audio/wav\r\n\r\n`
     ));
     parts.push(fileData);
