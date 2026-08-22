@@ -6,11 +6,18 @@ const {
   VoiceConnectionStatus,
   entersState,
 } = require('@discordjs/voice');
-const { Readable } = require('stream');
+const { execFile } = require('child_process');
+const { promisify } = require('util');
+const { tmpdir } = require('os');
+const { join } = require('path');
+const { writeFile, unlink } = require('fs/promises');
+const { randomUUID } = require('crypto');
 const OpusScript = require('opusscript');
 const { transcribe } = require('./stt');
 const { speak: ttsSpeak } = require('./tts');
 const { translateText } = require('./translator');
+
+const execFileAsync = promisify(execFile);
 
 class VoiceManager {
   constructor(client) {
@@ -36,17 +43,18 @@ class VoiceManager {
     if (!channel?.isVoiceBased()) throw new Error('Not a voice channel');
 
     const audioPlayer = createAudioPlayer();
-    const speakQueue = [];
-    let isSpeaking = false;
-    let idleTimer = null;
 
     audioPlayer.on('error', e => console.error('[VOICE] Player error:', e.message));
-    audioPlayer.on(AudioPlayerStatus.Idle, () => {
-      isSpeaking = false;
-      if (speakQueue.length) {
+    audioPlayer.on(AudioPlayerStatus.Idle, async () => {
+      if (state.pendingCleanup) {
+        for (const f of state.pendingCleanup) await unlink(f).catch(() => {});
+        state.pendingCleanup = null;
+      }
+      state.isSpeaking = false;
+      if (state.speakQueue.length) {
         this._playNext(guildId);
       } else {
-        idleTimer = setTimeout(() => this.disconnect(guildId), 300000);
+        state.idleTimer = setTimeout(() => this.disconnect(guildId), 300000);
       }
     });
 
@@ -73,9 +81,10 @@ class VoiceManager {
     const state = {
       connection,
       audioPlayer,
-      speakQueue,
-      isSpeaking,
-      idleTimer,
+      speakQueue: [],
+      isSpeaking: false,
+      idleTimer: null,
+      pendingCleanup: null,
       settings: { guildId, channelId, lang1, lang2 },
       userStreams: new Map(),
     };
@@ -122,25 +131,43 @@ class VoiceManager {
     if (!entry.stream.destroyed) entry.stream.destroy();
 
     const opusFrames = entry.chunks;
-    if (opusFrames.length < 2) return;
+    if (opusFrames.length < 2) {
+      console.log(`[VOICE] Skipping ${userId}: only ${opusFrames.length} frames`);
+      return;
+    }
 
     try {
       const pcmBuffer = this._decodeOpus(opusFrames);
-      if (pcmBuffer.length < 4800) return;
+      if (pcmBuffer.length < 4800) {
+        console.log(`[VOICE] Skipping ${userId}: PCM too short (${pcmBuffer.length} bytes)`);
+        return;
+      }
       const wavBuffer = this._pcmToWav(pcmBuffer);
       const sttResult = await transcribe(wavBuffer);
-      if (!sttResult.text || sttResult.text.trim().length < 2) return;
+      if (!sttResult.text || sttResult.text.trim().length < 2) {
+        console.log(`[VOICE] Skipping ${userId}: STT empty (text="${sttResult.text}")`);
+        return;
+      }
 
       const detected = sttResult.language;
       const { lang1, lang2 } = state.settings;
-      if (!detected || (detected !== lang1 && detected !== lang2)) return;
+      console.log(`[VOICE] STT: "${sttResult.text}" lang=${detected} | expected: ${lang1}/${lang2}`);
+      if (!detected || (detected !== lang1 && detected !== lang2)) {
+        console.log(`[VOICE] Skipping ${userId}: lang mismatch (detected=${detected})`);
+        return;
+      }
 
       const targetLang = detected === lang1 ? lang2 : lang1;
       const translated = await translateText(sttResult.text, targetLang, detected, state.settings.guildId);
-      if (!translated.text || translated.text === sttResult.text) return;
+      console.log(`[VOICE] Translated: "${translated.text}"`);
+      if (!translated.text || translated.text === sttResult.text) {
+        console.log(`[VOICE] Skipping ${userId}: no translation change`);
+        return;
+      }
 
       const ttsLang = targetLang === 'ko' ? 'ko' : 'en';
       const audioBuffer = await ttsSpeak(translated.text, ttsLang);
+      console.log(`[VOICE] Playing TTS: ${audioBuffer.length} bytes`);
       this._speak(state, audioBuffer);
     } catch (e) {
       console.error('[VOICE] Processing error:', e.message);
@@ -157,7 +184,7 @@ class VoiceManager {
       return;
     }
     state.isSpeaking = true;
-    state.audioPlayer.play(createAudioResource(Readable.from(audioBuffer)));
+    this._playAudio(state, audioBuffer);
   }
 
   async _playNext(guildId) {
@@ -165,7 +192,30 @@ class VoiceManager {
     if (!state || !state.speakQueue.length) return;
     const next = state.speakQueue.shift();
     state.isSpeaking = true;
-    state.audioPlayer.play(createAudioResource(Readable.from(next)));
+    this._playAudio(state, next);
+  }
+
+  async _playAudio(state, mp3Buffer) {
+    const id = randomUUID();
+    const mp3Path = join(tmpdir(), `tts-${id}.mp3`);
+    const oggPath = join(tmpdir(), `tts-${id}.ogg`);
+    try {
+      await writeFile(mp3Path, mp3Buffer);
+      await execFileAsync('ffmpeg', [
+        '-y', '-i', mp3Path,
+        '-c:a', 'libopus', '-b:a', '128k', '-vbr', 'on',
+        '-application', 'voip',
+        oggPath,
+      ], { timeout: 15000 });
+      await unlink(mp3Path).catch(() => {});
+      state.pendingCleanup = [oggPath];
+      state.audioPlayer.play(createAudioResource(oggPath));
+    } catch (e) {
+      console.error('[VOICE] Audio conversion/playback error:', e.message);
+      state.isSpeaking = false;
+      await unlink(mp3Path).catch(() => {});
+      await unlink(oggPath).catch(() => {});
+    }
   }
 
   _decodeOpus(opusFrames) {
