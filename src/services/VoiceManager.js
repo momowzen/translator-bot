@@ -19,6 +19,14 @@ const { translateText } = require('./translator');
 
 const execFileAsync = promisify(execFile);
 
+const LANG_NAME_TO_CODE = {
+  english: 'en', korean: 'ko', chinese: 'zh-CN', japanese: 'ja',
+  spanish: 'es', french: 'fr', german: 'de', portuguese: 'pt',
+  russian: 'ru', arabic: 'ar', hindi: 'hi', italian: 'it',
+  dutch: 'nl', swedish: 'sv', polish: 'pl', turkish: 'tr',
+  vietnamese: 'vi', thai: 'th', indonesian: 'id', malay: 'ms',
+};
+
 class VoiceManager {
   constructor(client) {
     this.client = client;
@@ -149,7 +157,7 @@ class VoiceManager {
         return;
       }
 
-      const detected = sttResult.language;
+      const detected = LANG_NAME_TO_CODE[sttResult.language?.toLowerCase()] || sttResult.language;
       const { lang1, lang2 } = state.settings;
       console.log(`[VOICE] STT: "${sttResult.text}" lang=${detected} | expected: ${lang1}/${lang2}`);
       if (!detected || (detected !== lang1 && detected !== lang2)) {
