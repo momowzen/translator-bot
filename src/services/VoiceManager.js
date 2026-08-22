@@ -185,7 +185,7 @@ class VoiceManager {
         return;
       }
 
-      const ttsLang = targetLang === 'ko' ? 'ko' : 'en';
+      const ttsLang = targetLang;
       const audioBuffer = await ttsSpeak(translated.text, ttsLang);
       console.log(`[VOICE] Playing TTS: ${audioBuffer.length} bytes`);
       this._speak(state, audioBuffer);
