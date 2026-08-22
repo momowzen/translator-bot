@@ -44,11 +44,11 @@ const LANG_NAME_TO_CODE = {
   uyghur: 'ug', uzbek: 'uz', zulu: 'zu', hausa: 'ha',
   croatian: 'hr', czech: 'cs', danish: 'da', estonian: 'et',
   finnish: 'fi', greek: 'el', hungarian: 'hu', latvian: 'lv',
-  lithuanian: 'lt', romanian: 'ro', serbo-croatian: 'hr',
+  lithuanian: 'lt', romanian: 'ro', 'serbo-croatian': 'hr',
   slovak: 'sk', slovenian: 'sl', bulgarian: 'bg',
   hebrew: 'he', yoruba: 'yo', igbo: 'ig', sesotho: 'st',
   shona: 'sn', sindhi: 'sd', xhosa: 'xh', kinyarwanda: 'rw',
-  luxembourgish: 'lb', haitian: 'ht', haitian creole: 'ht',
+  luxembourgish: 'lb', haitian: 'ht', 'haitian creole': 'ht',
   maori: 'mi', corsican: 'co', frisian: 'fy', esperanto: 'eo',
 };
 
