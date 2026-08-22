@@ -126,6 +126,7 @@ class VoiceManager {
   }
 
   _onSpeakingStart(state, userId) {
+    if (userId === state.connection.joinConfig.selfId) return;
     const stream = state.connection.receiver.subscribe(userId, { end: 'manual' });
     const chunks = [];
     stream.on('data', (chunk) => chunks.push(chunk));
@@ -148,6 +149,17 @@ class VoiceManager {
       const pcmBuffer = this._decodeOpus(opusFrames);
       if (pcmBuffer.length < 4800) {
         console.log(`[VOICE] Skipping ${userId}: PCM too short (${pcmBuffer.length} bytes)`);
+        return;
+      }
+      const samples = pcmBuffer.length / 2;
+      let sum = 0;
+      for (let i = 0; i < pcmBuffer.length; i += 2) {
+        const s = pcmBuffer.readInt16LE(i);
+        sum += s * s;
+      }
+      const rms = Math.sqrt(sum / samples);
+      if (rms < 500) {
+        console.log(`[VOICE] Skipping ${userId}: silence (RMS=${rms.toFixed(0)})`);
         return;
       }
       const wavBuffer = this._pcmToWav(pcmBuffer);
