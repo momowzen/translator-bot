@@ -40,23 +40,50 @@ const REV_MAP = {
   nb: 'no',
 };
 
+const SOURCE_MAP = {
+  en: 'en',
+  pt: 'pt',
+  'zh-CN': 'zh',
+  'zh-TW': 'zh',
+  no: 'nb',
+};
+
 function toTarget(code) {
   return (CODE_MAP[code] || code).toUpperCase();
 }
 
 function toSource(code) {
   const lower = code.toLowerCase();
-  return (REV_MAP[lower] || lower).toUpperCase();
+  return (SOURCE_MAP[code] || SOURCE_MAP[lower] || lower).toUpperCase();
 }
 
 async function translateText(text, targetLang, sourceLang, channelId) {
+  if (rateLimited(channelId)) return { text: null, detectedLang: null };
+
+  const detected = sourceLang === 'auto' ? null : (sourceLang || null);
+  const target = toTarget(targetLang);
+  const src = sourceLang && sourceLang !== 'auto' ? toSource(sourceLang) : null;
+
+  const run = async (source) => {
+    const result = await translator.translateText(text, source, target);
+    return {
+      text: result.text,
+      detectedLang: detected || result.detectedSourceLang?.toLowerCase() || null,
+    };
+  };
+
   try {
-    if (rateLimited(channelId)) return { text: null, detectedLang: null };
-    const src = sourceLang && sourceLang !== 'auto' ? toSource(sourceLang) : null;
-    const result = await translator.translateText(text, src, toTarget(targetLang));
-    const detected = sourceLang === 'auto' ? null : (sourceLang || null);
-    return { text: result.text, detectedLang: detected || result.detectedSourceLang?.toLowerCase() || null };
+    return await run(src);
   } catch (err) {
+    if (src) {
+      try {
+        console.warn(`Translation source "${src}" rejected, retrying with auto-detect:`, err.message);
+        return await run(null);
+      } catch (retryErr) {
+        console.error('Translation error:', retryErr.message);
+        return { text: null, detectedLang: null };
+      }
+    }
     console.error('Translation error:', err.message);
     return { text: null, detectedLang: null };
   }
@@ -74,4 +101,4 @@ async function detectLanguage(text, channelId) {
   }
 }
 
-module.exports = { translateText, detectLanguage };
+module.exports = { translateText, detectLanguage, toSource, toTarget };
