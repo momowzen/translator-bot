@@ -39,8 +39,8 @@ test('preserves case classes', () => {
   assert.strictEqual(normalizeSlang('THIS IS GG'), 'THIS IS GOOD GAME');
 });
 
-test('ignores mention placeholders', () => {
-  assert.strictEqual(normalizeSlang('hi ⟪M0⟫ ⟪M12⟫'), 'hi ⟪M0⟫ ⟪M12⟫');
+test('ignores protect placeholders, including index 8', () => {
+  assert.strictEqual(normalizeSlang('hi ⟪0⟫ ⟪12⟫ ⟪8⟫'), 'hi ⟪0⟫ ⟪12⟫ ⟪8⟫');
 });
 
 test('handles empty and whitespace input', () => {

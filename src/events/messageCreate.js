@@ -2,7 +2,7 @@ const { translateText, detectLanguage } = require('../services/translator');
 const { normalizeSlang } = require('../services/normalizer');
 const { getFlag } = require('../utils/languages');
 
-const MENTION_RE = /@(everyone|here)|<[@#][!&]?\d+>|<a?:\w+:\d+>/g;
+const PROTECT_RE = /```[\s\S]*?```|`[^`\n]*`|https?:\/\/[^\s<>()]+|<[@#][!&]?\d+>|<a?:\w+:\d+>|@(?:everyone|here)/g;
 
 const DEDUP_WINDOW_MS = 4000;
 const lastTranslated = new Map();
@@ -21,19 +21,21 @@ function isDuplicateText(channelId, text) {
   return false;
 }
 
-function preserveMentions(text, store) {
-  return text.replace(MENTION_RE, m => {
-    const idx = store.push(m);
-    return `⟪M${idx - 1}⟫`;
+function protect(text, store) {
+  return text.replace(PROTECT_RE, m => {
+    store.push(m);
+    return `⟪${store.length - 1}⟫`;
   });
 }
 
 function restoreMentions(text, store) {
-  return text.replace(/⟪M(\d+)⟫/g, (_, i) => store[+i] || '');
+  return text.replace(/⟪(\d+)⟫/g, (_, i) => store[+i] || '');
 }
 
 module.exports = {
   name: 'messageCreate',
+  protect,
+  restoreMentions,
   async execute(message, client) {
     try {
       if (message.author.bot) return;
@@ -43,8 +45,8 @@ module.exports = {
       const channelSetting = await client.db.getChannelSetting(message.channelId);
       if (!channelSetting?.auto_translate_lang) return;
 
-      const mentions = [];
-      const textToTranslate = normalizeSlang(preserveMentions(message.content, mentions));
+      const segments = [];
+      const textToTranslate = normalizeSlang(protect(message.content, segments));
       if (!textToTranslate) return;
 
       const langs = channelSetting.auto_translate_lang;
@@ -54,9 +56,9 @@ module.exports = {
       if (isDuplicateText(message.channelId, textToTranslate)) return;
 
       if (langs.length === 1 && detected !== langs[0]) {
-        const result = await translateText(textToTranslate, langs[0], detected, message.channelId);
+        const result = await translateText(textToTranslate, langs[0], 'auto', message.channelId);
         if (result.text && result.text !== textToTranslate) {
-          const translated = restoreMentions(result.text, mentions);
+          const translated = restoreMentions(result.text, segments);
           await message.reply({
             embeds: [{
               color: 0x5865F2,
@@ -69,9 +71,9 @@ module.exports = {
         const parts = [];
         for (const targetLang of langs) {
           if (targetLang === detected) continue;
-          const result = await translateText(textToTranslate, targetLang, detected, message.channelId);
+          const result = await translateText(textToTranslate, targetLang, 'auto', message.channelId);
           if (result.text && result.text !== textToTranslate) {
-            parts.push([getFlag(targetLang), restoreMentions(result.text, mentions)].filter(Boolean).join('\n'));
+            parts.push([getFlag(targetLang), restoreMentions(result.text, segments)].filter(Boolean).join('\n'));
           }
         }
         if (parts.length > 0) {
