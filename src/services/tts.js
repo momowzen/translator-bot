@@ -86,16 +86,32 @@ const VOICES = {
   ha: 'ha-NG-AminaNeural',
 };
 
+const MAX_ATTEMPTS = 3;
+
+function synthArgs(text, voice, tmpFile) {
+  const args = ['--text', text, '--voice', voice, '--write-media', tmpFile];
+  if (process.env.EDGE_TTS_PROXY) args.push('--proxy', process.env.EDGE_TTS_PROXY);
+  return args;
+}
+
 async function speak(text, lang) {
   const voice = VOICES[lang] || VOICES.en;
   const tmpFile = join(tmpdir(), `tts-${randomUUID()}.mp3`);
+  let lastErr;
   try {
-    await execFileAsync('edge-tts', [
-      '--text', text,
-      '--voice', voice,
-      '--write-media', tmpFile,
-    ], { timeout: 20000 });
-    return await readFile(tmpFile);
+    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+      try {
+        await execFileAsync('edge-tts', synthArgs(text, voice, tmpFile), { timeout: 20000 });
+        return await readFile(tmpFile);
+      } catch (err) {
+        lastErr = err;
+        await unlink(tmpFile).catch(() => {});
+        if (attempt < MAX_ATTEMPTS) {
+          await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
+        }
+      }
+    }
+    throw lastErr;
   } finally {
     await unlink(tmpFile).catch(() => {});
   }

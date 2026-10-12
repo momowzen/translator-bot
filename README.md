@@ -35,6 +35,10 @@ npm start              # or: npm run dev (auto-restart on changes)
 | `DEEPL_API_KEY` | yes      | DeepL API key.                                |
 | `TURSO_URL`     | no       | Turso database URL (hosted persistence).      |
 | `TURSO_TOKEN`   | no       | Turso auth token.                             |
+| `GROQ_API_KEY`  | no\*     | Groq key for voice speech-to-text (STT).      |
+| `EDGE_TTS_PROXY`| no       | HTTP proxy for Edge TTS if geo-blocked.       |
+
+\* Required only for the voice (STT) features; auto-translate works without it.
 
 Without `TURSO_URL`/`TURSO_TOKEN`, settings persist to `data/db.json` (gitignored).
 
