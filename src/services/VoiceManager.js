@@ -203,7 +203,7 @@ class VoiceManager {
       }
 
       const targetLang = detected === lang1 ? lang2 : lang1;
-      const translated = await translateText(sttResult.text, targetLang, detected, state.settings.guildId);
+      const translated = await translateText(sttResult.text, targetLang, detected, state.settings.guildId, { modelType: 'latency_optimized' });
       console.log(`[VOICE] Translated: "${translated.text}"`);
       if (!translated.text || translated.text === sttResult.text) {
         console.log(`[VOICE] Skipping ${userId}: no translation change`);

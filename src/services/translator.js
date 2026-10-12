@@ -6,6 +6,22 @@ const RATE_WINDOW_MS = 10_000;
 const RATE_LIMIT_PER_CHANNEL = 15;
 const usage = new Map();
 
+const MODEL_TYPE = process.env.DEEPL_MODEL_TYPE || 'quality_optimized';
+const FORMALITY = process.env.DEEPL_FORMALITY || null;
+const PRESERVE_FORMATTING = process.env.DEEPL_PRESERVE_FORMATTING !== 'false';
+const SPLIT_SENTENCES = process.env.DEEPL_SPLIT_SENTENCES || null;
+
+function buildOptions(context, modelType) {
+  const options = {
+    modelType: modelType || MODEL_TYPE,
+    preserveFormatting: PRESERVE_FORMATTING,
+  };
+  if (FORMALITY) options.formality = FORMALITY;
+  if (SPLIT_SENTENCES) options.splitSentences = SPLIT_SENTENCES;
+  if (context) options.context = context;
+  return options;
+}
+
 function rateLimited(channelId) {
   if (!channelId) return false;
   const now = Date.now();
@@ -57,15 +73,16 @@ function toSource(code) {
   return (SOURCE_MAP[code] || SOURCE_MAP[lower] || lower).toUpperCase();
 }
 
-async function translateText(text, targetLang, sourceLang, channelId) {
+async function translateText(text, targetLang, sourceLang, channelId, { context, modelType } = {}) {
   if (rateLimited(channelId)) return { text: null, detectedLang: null };
 
   const detected = sourceLang === 'auto' ? null : (sourceLang || null);
   const target = toTarget(targetLang);
   const src = sourceLang && sourceLang !== 'auto' ? toSource(sourceLang) : null;
+  const options = buildOptions(context, modelType);
 
   const run = async (source) => {
-    const result = await translator.translateText(text, source, target);
+    const result = await translator.translateText(text, source, target, options);
     return {
       text: result.text,
       detectedLang: detected || result.detectedSourceLang?.toLowerCase() || null,

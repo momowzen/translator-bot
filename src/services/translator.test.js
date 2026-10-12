@@ -5,8 +5,8 @@ const deeplPath = require.resolve('deepl-node');
 const calls = [];
 
 class FakeTranslator {
-  async translateText(text, source, target) {
-    calls.push({ text, source, target });
+  async translateText(text, source, target, options) {
+    calls.push({ text, source, target, options });
     if (source) {
       throw new Error("Bad request. Reason: Value for 'source_lang' not supported.");
     }
@@ -54,4 +54,19 @@ test('translateText skips the explicit source when auto-detecting', async () => 
   assert.strictEqual(result.text, 'JA:hello');
   assert.strictEqual(calls.length, 1);
   assert.strictEqual(calls[0].source, null);
+});
+
+test('translateText forwards DeepL options', async () => {
+  calls.length = 0;
+  await translateText('hello', 'ja', 'auto', undefined, { context: 'prior message' });
+  assert.strictEqual(calls[0].options.modelType, 'quality_optimized');
+  assert.strictEqual(calls[0].options.preserveFormatting, true);
+  assert.strictEqual(calls[0].options.context, 'prior message');
+});
+
+test('translateText honors a per-call modelType override', async () => {
+  calls.length = 0;
+  await translateText('hello', 'ja', 'auto', undefined, { modelType: 'latency_optimized' });
+  assert.strictEqual(calls[0].options.modelType, 'latency_optimized');
+  assert.strictEqual(calls[0].options.context, undefined);
 });

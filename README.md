@@ -40,7 +40,33 @@ npm start              # or: npm run dev (auto-restart on changes)
 
 \* Required only for the voice (STT) features; auto-translate works without it.
 
+### DeepL tuning (optional)
+
+| Variable                     | Default              | Description                                                        |
+| ---------------------------- | -------------------- | ------------------------------------------------------------------ |
+| `DEEPL_MODEL_TYPE`           | `quality_optimized`  | `quality_optimized` (best) or `latency_optimized` (fastest). Voice always uses `latency_optimized`. |
+| `DEEPL_FORMALITY`            | *(unset)*            | `default`/`more`/`less`/`prefer_more`/`prefer_less`.               |
+| `DEEPL_PRESERVE_FORMATTING`  | `true`               | Keep Markdown and punctuation intact.                              |
+| `DEEPL_SPLIT_SENTENCES`      | *(unset)*            | `default`/`on`/`off`/`nonewlines`.                                 |
+| `TRANSLATOR_CONTEXT_MESSAGES`| `3`                  | Prior channel messages sent as context (0 disables).               |
+
 Without `TURSO_URL`/`TURSO_TOKEN`, settings persist to `data/db.json` (gitignored).
+
+## Glossary
+
+`src/services/terms.json` holds user-editable terms applied before and after translation:
+
+```json
+{
+  "keep": ["Ainz", "Yggdrasil", "다이아"],
+  "replace": { "다이아": { "en": "diamonds", "ja": "ダイヤ" } }
+}
+```
+
+- **keep** — proper nouns/jargon passed through untranslated.
+- **replace** — optional per-target-language wording; falls back to the original term when a target is not listed.
+
+Terms are masked before translation and restored afterward, so DeepL can't mangle them. Latin terms match on word boundaries; non-Latin (CJK) terms match as substrings so attached particles (e.g. 다이아가) are caught.
 
 ## Commands
 
